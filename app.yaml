@@ -6,6 +6,7 @@ threadsafe: true
 
 handlers:
 - url: /
-  script: gkhereyouare.root
+  script: gkhereyouare.app
 - url: /poll
-  script: gkhereyouare.poll
+  script: gkhereyouare.app
+  login: admin

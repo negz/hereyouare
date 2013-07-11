@@ -1,0 +1,5 @@
+cron:
+  - description: Poll checkins
+    url: /poll
+    schedule: every 24 hours
+    timezone: Australia/NSW

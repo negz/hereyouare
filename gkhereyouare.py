@@ -13,5 +13,7 @@ class PollHandler(webapp2.RequestHandler):
     self.response.write('Borp.')
 
 
-root = webapp2.WSGIApplication([('/', RootHandler),], debug=True)
-poll = webapp2.WSGIApplication([('/poll', PollHandler),], debug=True)
+app = webapp2.WSGIApplication([
+    ('/', RootHandler),
+    ('/poll', PollHandler),
+  ], debug=True)
