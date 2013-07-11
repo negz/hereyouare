@@ -1,0 +1,11 @@
+application: gkhereyouare
+version: 1
+runtime: python27
+api_version: 1
+threadsafe: true
+
+handlers:
+- url: /
+  script: gkhereyouare.root
+- url: /poll
+  script: gkhereyouare.poll
