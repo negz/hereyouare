@@ -10,3 +10,11 @@ handlers:
 - url: /poll
   script: gkhereyouare.app
   login: admin
+- url: /token
+  script: gkhereyouare.app
+  login: admin
+
+env_variables:
+  APP_ID: 358523110942296
+  EPICENTRE_ID: 239927392813748
+  RADIUS: 1500
