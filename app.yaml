@@ -5,12 +5,12 @@ api_version: 1
 threadsafe: true
 
 handlers:
+- url: /
+  script: gkhereyouare.app
 - url: /js
   static_dir: js
 - url: /css
   static_dir: css
-- url: /
-  script: gkhereyouare.app
 - url: /poll
   script: gkhereyouare.app
   login: admin
@@ -27,6 +27,6 @@ libraries:
   version: latest
 
 env_variables:
-  APP_ID: 358523110942296
   EPICENTRE_ID: 239927392813748
+  FACEBOOK_APP_ID: 358523110942296
   RADIUS: 1500

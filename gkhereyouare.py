@@ -1,6 +1,6 @@
 """Polls and stores all Facebook checkins in a chosen area.
 
-Quick and dirty app to poll all Facebook checkins in the vicinity of a 
+Quick and dirty app to poll all Facebook checkins in the vicinity of a
 chosen venue, and store them for reference.
 """
 
@@ -98,11 +98,8 @@ class CheckinPoller(object):
 
 class RootHandler(webapp2.RequestHandler):
   def get(self):
-    template_values = {}
     template = JINJA.get_template('root.html')
-    self.response.headers['Content-Type'] = 'text/plain'
-    self.response.write(template.render(template_values))
-
+    return self.response.write(template.render())
 
 class PollHandler(webapp2.RequestHandler):
 
@@ -114,17 +111,31 @@ class PollHandler(webapp2.RequestHandler):
     for place in poller.GetNearbyPlaces():
       logging.info(place)
     self.response.headers['Content-Type'] = 'text/plain'
-    self.response.write('Poll complete.')
+    return self.response.write('Poll complete.')
 
 
 class AccessTokenHandler(webapp2.RequestHandler):
   def get(self):
-    self.response.headers['Content-Type'] = 'text/plain'
-    self.response.write('Balls.')
+    if self.request.get('code'):
+      return self.redirect('/')
+
+    logging.info(self.response)
+    facebook_auth_args = {
+        'client_id': CFG['FACEBOOK_APP_ID'],
+        'redirect_uri': self.request.url,
+        'response_type': 'code'
+    }
+    facebook_auth_uri = (
+        'https://www.facebook.com/dialog/oauth'
+        '?client_id=%(client_id)s'
+        '&redirect_uri=%(redirect_uri)s'
+        '&response_type=%(response_type)s'
+    ) % facebook_auth_args
+    return self.redirect(facebook_auth_uri)
 
 
 app = webapp2.WSGIApplication([
     ('/', RootHandler),
-    ('/token', AccessTokenHandler),
+    ('/token' , AccessTokenHandler),
     ('/poll', PollHandler),
   ], debug=True)

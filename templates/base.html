@@ -1,0 +1,72 @@
+{% autoescape true %}
+<!DOCTYPE html>
+<html class="no-js">
+    <head>
+    {% block head %}
+
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+        <title>{% block title %}{% endblock %}</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width">
+
+        <link rel="stylesheet" href="css/bootstrap.min.css">
+        <style>
+            body {
+                padding-top: 60px;
+                padding-bottom: 40px;
+            }
+        </style>
+        <link rel="stylesheet" href="css/bootstrap-responsive.min.css">
+        <link rel="stylesheet" href="css/main.css">
+
+        <script src="js/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
+    {% endblock %}
+    </head>
+    <body>
+
+        <div class="navbar navbar-inverse navbar-fixed-top">
+            <div class="navbar-inner">
+                <div class="container">
+                    <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </a>
+                    <a class="brand" href="#">Here you are.</a>
+                    <div class="nav-collapse collapse">
+                        <ul class="nav">
+                            {% block navigation %}{% endblock %}
+                        </ul>
+                        <form class="navbar-form pull-right" action="/token" method="get">
+                            <button type="submit" class="btn pull-right">Poke</button>
+                        </form>
+                    </div><!--/.nav-collapse -->
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            {% block content %}{% endblock %}
+
+            <hr>
+
+            <footer>
+                <p>Cobbled from
+                <a href="https://developers.google.com/appengine/">AppEngine</a>,
+                <a href="http://python.org/">Python</a>,
+                <a href="http://twitter.github.io/bootstrap/">Twitter Bootstrap</a>,
+                <a href="https://developers.facebook.com/docs/getting-started/graphapi/">and the Facebook Graph API.</a></p>
+            </footer>
+
+        </div> <!-- /container -->
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
+        <script>window.jQuery || document.write('<script src="js/vendor/jquery-1.10.1.min.js"><\/script>')</script>
+
+        <script src="js/vendor/bootstrap.min.js"></script>
+
+        <script src="js/main.js"></script>
+    </body>
+</html>
+{% endautoescape %}
