@@ -5,6 +5,7 @@ chosen venue, and store them for reference.
 """
 
 import facebook
+import jinja2
 import logging
 import os
 import webapp2
@@ -12,6 +13,9 @@ import webapp2
 
 #TODO(negz): Feel ashamed.
 CFG = os.environ
+JINJA = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templates')),
+    extensions=['jinja2.ext.autoescape'])
 
 
 class AccessToken(object):
@@ -94,8 +98,10 @@ class CheckinPoller(object):
 
 class RootHandler(webapp2.RequestHandler):
   def get(self):
+    template_values = {}
+    template = JINJA.get_template('root.html')
     self.response.headers['Content-Type'] = 'text/plain'
-    self.response.write('Boop.')
+    self.response.write(template.render(template_values))
 
 
 class PollHandler(webapp2.RequestHandler):
