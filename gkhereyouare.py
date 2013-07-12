@@ -8,6 +8,8 @@ import facebook
 import jinja2
 import logging
 import os
+import urllib
+import urllib2
 import webapp2
 
 
@@ -18,46 +20,56 @@ JINJA = jinja2.Environment(
     extensions=['jinja2.ext.autoescape'])
 
 
-class AccessToken(object):
-  def __init__(self, token_type='user'):
-    self.token_type = token_type
+def _DictFromParams(parameters):
+  dictionary = {}
+  parameters = parameters.split('&')
+  for parameter in parameters:
+    parameter = parameter.split('=')
+    dictionary[parameter[0]] = parameter[1]
+  return dictionary
 
-  def Set(self, token):
-    if self.token_type == 'user':
-      self._ExtendAndSetUser(token)
-    if self.token_type == 'app':
-      self._SetApp(token)
+
+def _PasswordFromFile(password_file):
+  """Read a password from a file."""
+  try:
+    with open(password_file, 'r') as pf:
+      for line in pf.readlines():
+        if not line.startswith('#'):
+          return line.strip()
+  except IOError as why:
+    logging.exception(why)
+    return None
+
+
+class AccessToken(object):
+  def __init__(self, id):
+    self.id = id
+
+  def _Store(self):
+    """Store a token for future use."""
+    pass
+
+  def SetFromCode(self, app_id, code, app_secret, redirect_uri):
+    """Convert a code into an access token."""
+    logging.info('Getting an access token from code %s and secret %s', code, app_secret)
+    args = urllib.urlencode({
+        'client_id': app_id,
+        'code': code,
+        'client_secret': app_secret,
+        'redirect_uri': redirect_uri
+    })
+    result = urllib2.urlopen('https://graph.facebook.com/oauth/access_token?%s' % args, None)
+    parameters = _DictFromParams(result.readline())
+    logging.info('Got access token %s', parameters['access_token'])
+    # TODO(negz): Store token.
+
+  def Extend(self, access_token):
+    """Swap a short lived access token for a long lived one."""
+    logging.info('Extending and storing %s', access_token)
 
   def Get(self):
-    if self.token_type == 'user':
-      return self._GetUser()
-    if self.token_type == 'app':
-      return self._GetApp()
-
-
-  def _ExtendAndSetUser(self, token):
-    """Exchanges a current Facebook user access token for a long lived one.
-
-    https://developers.facebook.com/docs/facebook-login/login-flow-for-web-no-jssdk/
-
-    Facebook hates freedom, so we must use OAuth to login and receive a short
-    lived (~2h) user access token. We can then use our app access token to
-    exchange the short lived token for a long lived (~60d) one.
-    """
-    #TODO(negz): Implement this.
-    pass
-
-
-  def _GetUser(self):
-    """Returns the current long lived user access token from the data store."""
-    #TODO(negz): Implement this. Test it and get sad if it's expired. Email?
+    """Return an access token."""
     return 'Nope.'
-
-  def _SetApp(self, token):
-    pass
-
-  def _GetApp(self):
-    pass
 
 
 class CheckinPoller(object):
@@ -101,10 +113,10 @@ class RootHandler(webapp2.RequestHandler):
     template = JINJA.get_template('root.html')
     return self.response.write(template.render())
 
-class PollHandler(webapp2.RequestHandler):
 
+class PollHandler(webapp2.RequestHandler):
   def get(self):
-    user_token = AccessToken('user').Get()
+    user_token = AccessToken('poller').Get()
     poller = CheckinPoller(CFG['EPICENTRE_ID'],
                            CFG['RADIUS'],
                            user_token)
@@ -116,10 +128,13 @@ class PollHandler(webapp2.RequestHandler):
 
 class AccessTokenHandler(webapp2.RequestHandler):
   def get(self):
-    if self.request.get('code'):
+    code = self.request.get('code')
+    if code:
+      app_secret = _PasswordFromFile(CFG['FACEBOOK_APP_SECRET_FILE'])
+      user_token = AccessToken('poller')
+      user_token.SetFromCode(CFG['FACEBOOK_APP_ID'], code, app_secret, self.request.url)
       return self.redirect('/')
 
-    logging.info(self.response)
     facebook_auth_args = {
         'client_id': CFG['FACEBOOK_APP_ID'],
         'redirect_uri': self.request.url,
