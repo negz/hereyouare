@@ -11,6 +11,7 @@ import os
 import urllib
 import urllib2
 import webapp2
+from google.appengine.ext import db
 
 
 #TODO(negz): Feel ashamed.
@@ -18,15 +19,6 @@ CFG = os.environ
 JINJA = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templates')),
     extensions=['jinja2.ext.autoescape'])
-
-
-def _DictFromParams(parameters):
-  dictionary = {}
-  parameters = parameters.split('&')
-  for parameter in parameters:
-    parameter = parameter.split('=')
-    dictionary[parameter[0]] = parameter[1]
-  return dictionary
 
 
 def _PasswordFromFile(password_file):
@@ -41,35 +33,80 @@ def _PasswordFromFile(password_file):
     return None
 
 
+def _DictFromParams(parameters):
+  dictionary = {}
+  parameters = parameters.split('&')
+  for parameter in parameters:
+    parameter = parameter.split('=')
+    dictionary[parameter[0]] = parameter[1]
+  return dictionary
+
+
 class AccessToken(object):
-  def __init__(self, id):
-    self.id = id
+  def __init__(self, token_id, app_id=None, app_secret=None):
+    self.token_id = token_id
+    self.app_id = app_id or CFG['FACEBOOK_APP_ID']
+    self.app_secret = app_secret or _PasswordFromFile(CFG['FACEBOOK_APP_SECRET_FILE'])
+    self.access_token = self.Get()
+    self.redirect_uri = None
 
-  def _Store(self):
+  class Token(db.Model):
+    token = db.StringProperty(required=True)
+  
+  def _Store(self, new_token):
     """Store a token for future use."""
-    pass
+    token = self.Token(
+        key_name=self.token_id,
+        token=new_token,
+    )
+    token.put()
+    self.access_token = new_token
 
-  def SetFromCode(self, app_id, code, app_secret, redirect_uri):
+  def _PokeFacebook(self, args=None):
+    args = args or {}
+    args = urllib.urlencode(args)
+    try:
+      result = urllib2.urlopen('https://graph.facebook.com/oauth/access_token?%s' % args, None)
+      return _DictFromParams(result.readline())
+    except urllib2.HTTPError as why:
+      logging.exception(why)
+      return None
+
+  def SetFromCode(self, code, redirect_uri):
     """Convert a code into an access token."""
-    logging.info('Getting an access token from code %s and secret %s', code, app_secret)
-    args = urllib.urlencode({
-        'client_id': app_id,
+    self.redirect_uri = redirect_uri
+    args = {
+        'client_id': self.app_id,
+        'client_secret': self.app_secret,
         'code': code,
-        'client_secret': app_secret,
-        'redirect_uri': redirect_uri
-    })
-    result = urllib2.urlopen('https://graph.facebook.com/oauth/access_token?%s' % args, None)
-    parameters = _DictFromParams(result.readline())
-    logging.info('Got access token %s', parameters['access_token'])
-    # TODO(negz): Store token.
+        'redirect_uri': self.redirect_uri,
+    }
+    result = self._PokeFacebook(args)
+    if result:
+      self._Store(result['access_token'])
 
-  def Extend(self, access_token):
+  def Extend(self):
     """Swap a short lived access token for a long lived one."""
-    logging.info('Extending and storing %s', access_token)
+    if not self.access_token:
+      logging.error('No access token to extend.')
+    args = {
+        'client_id': self.app_id,
+        'client_secret': self.app_secret,
+        'grant_type': 'fb_exchange_token',
+        'fb_exchange_token': self.access_token,
+        'redirect_uri': self.redirect_uri,
+    }
+    result = self._PokeFacebook(args)
+    if result:
+      self._Store(result['access_token'])
 
   def Get(self):
     """Return an access token."""
-    return 'Nope.'
+    token = self.Token.get_by_key_name(self.token_id)
+    if not token:
+      return None
+    logging.debug('Got token %s', token.token)
+    return token.token
 
 
 class CheckinPoller(object):
@@ -130,22 +167,18 @@ class AccessTokenHandler(webapp2.RequestHandler):
   def get(self):
     code = self.request.get('code')
     if code:
-      app_secret = _PasswordFromFile(CFG['FACEBOOK_APP_SECRET_FILE'])
       user_token = AccessToken('poller')
-      user_token.SetFromCode(CFG['FACEBOOK_APP_ID'], code, app_secret, self.request.url)
+      user_token.SetFromCode(code, self.request.url)
+      user_token.Extend()
       return self.redirect('/')
 
     facebook_auth_args = {
         'client_id': CFG['FACEBOOK_APP_ID'],
         'redirect_uri': self.request.url,
-        'response_type': 'code'
+        'response_type': 'code',
     }
-    facebook_auth_uri = (
-        'https://www.facebook.com/dialog/oauth'
-        '?client_id=%(client_id)s'
-        '&redirect_uri=%(redirect_uri)s'
-        '&response_type=%(response_type)s'
-    ) % facebook_auth_args
+    facebook_auth_uri = ('https://www.facebook.com/dialog/oauth?%s' %
+                         urllib.urlencode(facebook_auth_args))
     return self.redirect(facebook_auth_uri)
 
 
