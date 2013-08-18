@@ -31,3 +31,4 @@ env_variables:
   FACEBOOK_APP_ID: 358523110942296
   FACEBOOK_APP_SECRET_FILE: gkhereyouare.secret
   RADIUS: 1000
+  SCOPE: "friends_photos,friends_status,user_photos,user_status"

@@ -4,14 +4,15 @@ Quick and dirty app to poll all Facebook checkins in the vicinity of a
 chosen venue, and store them for reference.
 """
 
-import facebook
 import jinja2
 import logging
 import os
 import urllib
 import urllib2
 import webapp2
-from google.appengine.ext import db
+
+import facebook
+import gkdatastore
 
 
 #TODO(negz): Feel ashamed.
@@ -43,6 +44,21 @@ def _DictFromParams(parameters):
   return dictionary
 
 
+def _Search(graph, search_args, limit=100):
+  search_args['limit'] = limit
+  search_args['offset'] = 0
+  try:
+    while True:
+      results = graph.request('search', search_args)
+      if not results['data']:
+        break
+      search_args['offset'] += limit
+      for result in results['data']:
+        yield result
+  except facebook.GraphAPIError as why:
+    logging.exception(why)
+
+
 class AccessToken(object):
   def __init__(self, token_id, app_id=None, app_secret=None):
     self.token_id = token_id
@@ -51,12 +67,9 @@ class AccessToken(object):
     self.access_token = self.Get()
     self.redirect_uri = None
 
-  class Token(db.Model):
-    token = db.StringProperty(required=True)
-  
   def _Store(self, new_token):
     """Store a token for future use."""
-    token = self.Token(
+    token = gkdatastore.Token(
         key_name=self.token_id,
         token=new_token,
     )
@@ -104,44 +117,78 @@ class AccessToken(object):
 
   def Get(self):
     """Return an access token."""
-    token = self.Token.get_by_key_name(self.token_id)
+    token = gkdatastore.Token.get_by_key_name(self.token_id)
     if not token:
       return None
     logging.debug('Got token %s', token.token)
     return token.token
 
+class CheckIn(object):
+  def __init__(self, checkin_id, access_token, graph=None, fb_object=None):
+    self.checkin_id = checkin_id
+    self.access_token = access_token
+    self.graph = graph or facebook.GraphAPI(self.access_token)
+    self.fb_object = fb_object or self.graph.get_object(self.checkin_id)
+
+  def Store(self):
+    """Store a checkin."""
+    checkin = gkdatastore.CheckIn(
+        key_name=self.checkin_id,
+        type=self.fb_object['type'],
+        place_id=int(self.fb_object['place']['id']),
+        person_id=int(self.fb_object['from']['id']),
+        person_name=self.fb_object['from']['name'],
+    )
+    checkin.put()
 
 class Place(object):
-  def __init__(self, place_id, access_token):
+  def __init__(self, place_id, access_token, graph=None, fb_object=None):
     self.place_id = place_id
     self.access_token = access_token
-    self.graph = facebook.GraphAPI(self.access_token)
+    self.graph = graph or facebook.GraphAPI(self.access_token)
+    self.fb_object = fb_object or self.graph.get_object(self.place_id)
+    self.checkins = 0
 
-  def GetNearbyPlaces(self, radius, limit=100):
-    """Yields a list of Facebook places near a chosen place.
+  def Store(self):
+    """Store a place."""
+    place = gkdatastore.Place(
+        key_name=self.place_id,
+        name=self.fb_object['name'],
+        checkins=self.checkins,
+    )
+    place.put()
+
+  def GetCheckIns(self):
+    """Yields Facebook objects (checkins, statuses, etc) at this place."""
+    try:
+      search_args = {
+        'type': 'location',
+        'place': self.place_id,
+      }
+      for checkin in _Search(self.graph, search_args):
+        yield CheckIn(checkin['id'], self.access_token, self.graph, checkin)
+    except facebook.GraphAPIError as why:
+      logging.exception(why)
+
+  def GetNearbyPlaces(self, radius):
+    """Yields Facebook places near this place.
 
     Args:
-      limit: Int, the amount of results to return with each search query.
+      radius: Int, the radius in kilometers inside which places are considered
+        'nearby'.
 
     Yields:
-      A list of tuples like (id, name) representing Facebook places.
+      A Place() object for each nearby place.
     """
     try:
-      location = self.graph.get_object(self.place_id)['location']
+      location = self.fb_object['location']
       search_args = {
         'type': 'place',
         'center': '%s, %s' % (location['latitude'], location['longitude']),
         'distance': radius,
-        'limit': limit,
-        'offset': 0,
       }
-      while True:
-        results = self.graph.request('search', search_args)
-        if not results['data']:
-          break
-        search_args['offset'] += limit
-        for place in results['data']:
-          yield (place['id'], place['name'])
+      for place in _Search(self.graph, search_args):
+        yield Place(place['id'], self.access_token, self.graph, place)
     except facebook.GraphAPIError as why:
       logging.exception(why)
 
@@ -158,7 +205,9 @@ class PollHandler(webapp2.RequestHandler):
     epicentre = Place(CFG['EPICENTRE_ID'],
                       user_token)
     for place in epicentre.GetNearbyPlaces(CFG['RADIUS']):
-      logging.info(place)
+      checkins = len([checkin.Store() for checkin in place.GetCheckIns()])
+      place.checkins = checkins
+      place.Store()
     self.response.headers['Content-Type'] = 'text/plain'
     return self.response.write('Poll complete.')
 
@@ -176,6 +225,7 @@ class AccessTokenHandler(webapp2.RequestHandler):
         'client_id': CFG['FACEBOOK_APP_ID'],
         'redirect_uri': self.request.url,
         'response_type': 'code',
+        'scope': CFG['SCOPE']
     }
     facebook_auth_uri = ('https://www.facebook.com/dialog/oauth?%s' %
                          urllib.urlencode(facebook_auth_args))
