@@ -16,6 +16,7 @@ from google.appengine.ext import db
 
 #TODO(negz): Feel ashamed.
 CFG = os.environ
+DEBUG = CFG['SERVER_SOFTWARE'].startswith('Dev')
 JINJA = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templates')),
     extensions=['jinja2.ext.autoescape'])
@@ -61,6 +62,7 @@ class AccessToken(object):
     )
     token.put()
     self.access_token = new_token
+    logging.debug('Stored token %s', new_token)
 
   def _PokeFacebook(self, args=None):
     args = args or {}
@@ -109,15 +111,14 @@ class AccessToken(object):
     return token.token
 
 
-class CheckinPoller(object):
-  def __init__(self, epicentre_id, radius, access_token):
-    self.epicentre_id = epicentre_id
-    self.radius = radius
+class Place(object):
+  def __init__(self, place_id, access_token):
+    self.place_id = place_id
     self.access_token = access_token
     self.graph = facebook.GraphAPI(self.access_token)
 
-  def GetNearbyPlaces(self, limit=100):
-    """Yields a list of Facebook places near a chosen epicentre.
+  def GetNearbyPlaces(self, radius, limit=100):
+    """Yields a list of Facebook places near a chosen place.
 
     Args:
       limit: Int, the amount of results to return with each search query.
@@ -126,13 +127,13 @@ class CheckinPoller(object):
       A list of tuples like (id, name) representing Facebook places.
     """
     try:
-      location = self.graph.get_object(self.epicentre_id)['location']
+      location = self.graph.get_object(self.place_id)['location']
       search_args = {
         'type': 'place',
         'center': '%s, %s' % (location['latitude'], location['longitude']),
-        'distance': self.radius,
+        'distance': radius,
         'limit': limit,
-        'offset': limit,
+        'offset': 0,
       }
       while True:
         results = self.graph.request('search', search_args)
@@ -154,10 +155,9 @@ class RootHandler(webapp2.RequestHandler):
 class PollHandler(webapp2.RequestHandler):
   def get(self):
     user_token = AccessToken('poller').Get()
-    poller = CheckinPoller(CFG['EPICENTRE_ID'],
-                           CFG['RADIUS'],
-                           user_token)
-    for place in poller.GetNearbyPlaces():
+    epicentre = Place(CFG['EPICENTRE_ID'],
+                      user_token)
+    for place in epicentre.GetNearbyPlaces(CFG['RADIUS']):
       logging.info(place)
     self.response.headers['Content-Type'] = 'text/plain'
     return self.response.write('Poll complete.')
@@ -186,4 +186,4 @@ app = webapp2.WSGIApplication([
     ('/', RootHandler),
     ('/token' , AccessTokenHandler),
     ('/poll', PollHandler),
-  ], debug=True)
+  ], debug=DEBUG)
