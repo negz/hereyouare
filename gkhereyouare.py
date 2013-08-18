@@ -10,6 +10,7 @@ import os
 import urllib
 import urllib2
 import webapp2
+from google.appengine.ext import db
 
 import facebook
 import gkdatastore
@@ -195,13 +196,23 @@ class Place(object):
 
 class RootHandler(webapp2.RequestHandler):
   def get(self):
+    user_token = AccessToken('gk').Get()
+    epicentre = Place(CFG['EPICENTRE_ID'],
+                      user_token)
+    places = db.Query(gkdatastore.Place)
+    places.filter('checkins >', 0)
+    places.order('-checkins')
+    template_values = {
+      'epicentre': epicentre,
+      'places': places,
+    }
     template = JINJA.get_template('root.html')
-    return self.response.write(template.render())
+    return self.response.write(template.render(template_values))
 
 
 class PollHandler(webapp2.RequestHandler):
   def get(self):
-    user_token = AccessToken('poller').Get()
+    user_token = AccessToken('gk').Get()
     epicentre = Place(CFG['EPICENTRE_ID'],
                       user_token)
     for place in epicentre.GetNearbyPlaces(CFG['RADIUS']):
@@ -216,7 +227,7 @@ class AccessTokenHandler(webapp2.RequestHandler):
   def get(self):
     code = self.request.get('code')
     if code:
-      user_token = AccessToken('poller')
+      user_token = AccessToken('gk')
       user_token.SetFromCode(code, self.request.url)
       user_token.Extend()
       return self.redirect('/')
