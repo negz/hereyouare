@@ -48,6 +48,7 @@ def _DictFromParams(parameters):
 def _Search(graph, search_args, limit=100):
   search_args['limit'] = limit
   search_args['offset'] = 0
+  logging.debug('Searching Facebook with %s', search_args)
   try:
     while True:
       results = graph.request('search', search_args)
@@ -196,30 +197,39 @@ class Place(object):
 
 class RootHandler(webapp2.RequestHandler):
   def get(self):
-    user_token = AccessToken('gk').Get()
-    epicentre = Place(CFG['EPICENTRE_ID'],
-                      user_token)
-    places = db.Query(gkdatastore.Place)
-    places.filter('checkins >', 0)
-    places.order('-checkins')
-    template_values = {
-      'epicentre': epicentre,
-      'places': places,
-    }
-    template = JINJA.get_template('root.html')
-    return self.response.write(template.render(template_values))
+    try:
+      epicentre = Place(CFG['EPICENTRE_ID'], None)
+      places = db.Query(gkdatastore.Place)
+      places.filter('checkins >', 0)
+      places.order('-checkins')
+      template_values = {
+        'epicentre': epicentre,
+        'places': places,
+      }
+      template = JINJA.get_template('root.html')
+      return self.response.write(template.render(template_values))
+    except facebook.GraphAPIError as why:
+      template_values = {
+        'error_number': 500,
+        'error_text': 'Facebook Graph API Error: %s' % why,
+      }
+      template = JINJA.get_template('error.html')
+      self.response.set_status(500)
+      return self.response.write(template.render(template_values))
 
 
 class PollHandler(webapp2.RequestHandler):
   def get(self):
-    user_token = AccessToken('gk').Get()
+    self.response.headers['Content-Type'] = 'text/plain'
+    user_token = AccessToken('gk').access_token
+    if not user_token:
+      return self.response.write('No user token - doing nothing.')
     epicentre = Place(CFG['EPICENTRE_ID'],
                       user_token)
     for place in epicentre.GetNearbyPlaces(CFG['RADIUS']):
       checkins = len([checkin.Store() for checkin in place.GetCheckIns()])
       place.checkins = checkins
       place.Store()
-    self.response.headers['Content-Type'] = 'text/plain'
     return self.response.write('Poll complete.')
 
 
