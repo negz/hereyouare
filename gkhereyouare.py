@@ -126,20 +126,40 @@ class AccessToken(object):
     return token.token
 
 class CheckIn(object):
-  def __init__(self, checkin_id, access_token, graph=None, fb_object=None):
-    self.checkin_id = checkin_id
+  """Represents a Facebook checkin.
+
+  Args:
+    checkin: A result from a search for checkins at a place. The entire result
+        must be passed because doing a get_object() on a the results ID returns
+        a differently formed object. Derp.
+      access_token: A valid access token for the Graph API.
+      graph: An instance of the graph API.
+      fb_object: The object that would be returned by get_object(id).
+  """
+  def __init__(self, checkin, access_token, graph=None, fb_object=None):
+    self.checkin = checkin
     self.access_token = access_token
     self.graph = graph or facebook.GraphAPI(self.access_token)
-    self.fb_object = fb_object or self.graph.get_object(self.checkin_id)
+    self.fb_object = fb_object or self.graph.get_object(self.checkin['id'])
 
   def Store(self):
     """Store a checkin."""
+    message = ''
+    when = ''
+    if 'message' in self.fb_object:
+      message = self.fb_object['message']
+    if 'created_time' in self.fb_object:
+      when = self.fb_object['created_time']
+    if 'updated_time' in self.fb_object:
+      when = self.fb_object['updated_time']
     checkin = gkdatastore.CheckIn(
-        key_name=self.checkin_id,
-        type=self.fb_object['type'],
-        place_id=int(self.fb_object['place']['id']),
-        person_id=int(self.fb_object['from']['id']),
-        person_name=self.fb_object['from']['name'],
+        key_name=self.checkin['id'],
+        type=self.checkin['type'],
+        place_id=int(self.checkin['place']['id']),
+        person_id=int(self.checkin['from']['id']),
+        person_name=self.checkin['from']['name'],
+        when=when,
+        message=message,
     )
     checkin.put()
 
@@ -168,7 +188,7 @@ class Place(object):
         'place': self.place_id,
       }
       for checkin in _Search(self.graph, search_args):
-        yield CheckIn(checkin['id'], self.access_token, self.graph, checkin)
+        yield CheckIn(checkin, self.access_token, self.graph)
     except facebook.GraphAPIError as why:
       logging.exception(why)
 
@@ -227,10 +247,23 @@ class PollHandler(webapp2.RequestHandler):
     epicentre = Place(CFG['EPICENTRE_ID'],
                       user_token)
     for place in epicentre.GetNearbyPlaces(CFG['RADIUS']):
-      checkins = len([checkin.Store() for checkin in place.GetCheckIns()])
-      place.checkins = checkins
+      place.checkins = len([checkin.Store() for checkin in place.GetCheckIns()])
       place.Store()
     return self.response.write('Poll complete.')
+
+
+class PlaceHandler(webapp2.RequestHandler):
+  def get(self, place_id):
+    place= gkdatastore.Place.get_by_key_name(place_id)
+    checkins = db.Query(gkdatastore.CheckIn)
+    checkins.filter('place_id =', int(place_id))
+    # TODO(negz): FB query each checkin for its details?
+    template = JINJA.get_template('place.html')
+    template_values = {
+      'place': place,
+      'checkins': checkins,
+    }
+    return self.response.write(template.render(template_values))
 
 
 class AccessTokenHandler(webapp2.RequestHandler):
@@ -256,5 +289,6 @@ class AccessTokenHandler(webapp2.RequestHandler):
 app = webapp2.WSGIApplication([
     ('/', RootHandler),
     ('/token' , AccessTokenHandler),
+    ('/place/(\d+)', PlaceHandler),
     ('/poll', PollHandler),
   ], debug=DEBUG)

@@ -12,6 +12,8 @@ class CheckIn(db.Model):
   place_id = db.IntegerProperty(required=True)
   person_id = db.IntegerProperty(required=True)
   person_name = db.StringProperty(required=True)
+  message = db.StringProperty()
+  when = db.StringProperty()
 
 
 class Place(db.Model):

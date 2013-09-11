@@ -13,7 +13,8 @@
 <div class="row">
     {% for place in places %}
       <div class="span3">
-        <span class="badge badge-success">{{ place.checkins }}</span> {{ place.name }}
+        <span class="badge badge-success">{{ place.checkins }}</span>
+        <a href="/place/{{ place.key().name() }}">{{ place.name }}</a>
       </div>
     {% endfor %}
 </div>

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Here you are.{% endblock %}
+{% block navigation%}
+{% endblock %}
+{% block content %}
+<div class="hero-unit">
+    <h1>{{ place.name }}</h1>
+</div>
+    {% for checkin in checkins %}
+      <div class="row">
+        <div class="span3">{{ checkin.when }}</div>
+        <div class="span2">{{ checkin.person_name }}</div>
+        <div class="span7">{{ checkin.message }}</div>
+      </div>
+    {% endfor %}
+{% endblock %}
