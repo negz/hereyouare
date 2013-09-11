@@ -12,7 +12,7 @@ class CheckIn(db.Model):
   place_id = db.IntegerProperty(required=True)
   person_id = db.IntegerProperty(required=True)
   person_name = db.StringProperty(required=True)
-  message = db.StringProperty()
+  message = db.TextProperty()
   when = db.StringProperty()
 
 
